@@ -205,7 +205,7 @@
       images.forEach((src, i) => {
         const t = document.createElement("img");
         t.src = src;
-        t.alt = `Halaman ${i+1}`;
+        t.alt = `Page ${i+1}`;
         t.dataset.index = i;
         t.loading = "lazy";
         if(i === index) t.classList.add("active");
@@ -226,8 +226,8 @@
         return;
       }
       mainImage.src = images[index];
-      mainImage.alt = `Halaman ${index + 1}`;
-      pageMeta.textContent = `Halaman ${index + 1} / ${images.length}`;
+      mainImage.alt = `Page ${index + 1}`;
+      pageMeta.textContent = `Page ${index + 1} / ${images.length}`;
       // update active thumb
       document.querySelectorAll(".thumbnails img").forEach(img => {
         img.classList.toggle("active", Number(img.dataset.index) === index);
