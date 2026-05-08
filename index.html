@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pembaca Komik Sederhana</title>
+  <meta name="description" content="Pembaca komik sederhana: klik untuk zoom, next/prev, thumbnail, keyboard navigation." />
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent:#f8fafc;
+      --muted:#9aa4b2;
+      --accent-2:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+      background:linear-gradient(180deg,#071021 0%, #0b1220 100%);
+      color:var(--accent);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    }
+
+    .reader{
+      width:100%;
+      max-width:980px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:12px;
+      padding:16px;
+      box-shadow:0 8px 30px rgba(2,6,23,0.6);
+    }
+
+    .viewer{
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      margin-bottom:12px;
+    }
+
+    .image-wrap{
+      width:100%;
+      max-width:760px;
+      height:calc(100vh - 260px);
+      max-height:720px;
+      background:var(--card);
+      border-radius:8px;
+      overflow:auto;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      transition:box-shadow .2s ease;
+      scroll-behavior:smooth;
+    }
+
+    .image-wrap.zoomed{
+      cursor:zoom-out;
+      box-shadow:0 20px 60px rgba(0,0,0,0.6);
+    }
+
+    .image-wrap img{
+      max-width:100%;
+      max-height:100%;
+      width:auto;
+      height:auto;
+      transition:transform .25s ease;
+      user-select:none;
+      -webkit-user-drag:none;
+      cursor:zoom-in;
+      display:block;
+    }
+
+    .image-wrap.zoomed img{
+      transform:scale(2);
+      cursor:grab;
+    }
+
+    .nav{
+      background:rgba(255,255,255,0.06);
+      border:0;
+      color:var(--accent);
+      width:44px;
+      height:44px;
+      border-radius:8px;
+      font-size:26px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      transition:background .15s;
+      flex-shrink:0;
+    }
+    .nav:hover{background:rgba(255,255,255,0.1)}
+    .nav:active{transform:translateY(1px)}
+
+    .controls{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:center;
+    }
+
+    .zoom-hint{
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .thumbnails{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      padding:6px;
+      width:100%;
+    }
+    .thumbnails img{
+      height:72px;
+      border-radius:6px;
+      object-fit:cover;
+      cursor:pointer;
+      border:2px solid transparent;
+      transition:transform .12s, border-color .12s;
+      display:block;
+    }
+    .thumbnails img:hover{transform:translateY(-4px)}
+    .thumbnails img.active{border-color:var(--accent-2)}
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:10px;
+    }
+    .title{
+      font-weight:600;
+      font-size:16px;
+    }
+    .meta{
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    @media (max-width:720px){
+      .image-wrap{height:60vh}
+      .nav{width:38px;height:38px;font-size:22px}
+      .thumbnails img{height:56px}
+    }
+
+    /* small accessibility focus */
+    .nav:focus, .thumbnails img:focus {outline:2px solid rgba(96,165,250,0.25); outline-offset:2px}
+  </style>
+</head>
+<body>
+  <main class="reader" aria-label="Pembaca Komik">
+    <div class="topbar">
+      <div class="title">Pembaca Komik Sederhana</div>
+      <div class="meta" id="pageMeta">Halaman 1 / 1</div>
+    </div>
+
+    <div class="viewer">
+      <button class="nav prev" aria-label="Sebelumnya" id="prevBtn">‹</button>
+
+      <div class="image-wrap" id="imageWrap" tabindex="0" aria-live="polite">
+        <img id="mainImage" src="" alt="Halaman komik" draggable="false" />
+      </div>
+
+      <button class="nav next" aria-label="Berikutnya" id="nextBtn">›</button>
+    </div>
+
+    <div class="controls">
+      <div class="zoom-hint">Klik gambar untuk memperbesar; drag saat zoom; gunakan panah kiri/kanan untuk navigasi.</div>
+      <div class="thumbnails" id="thumbs" aria-label="Thumbnail halaman"></div>
+    </div>
+  </main>
+
+  <script>
+    // === Konfigurasi gambar ===
+    // Letakkan file gambar di folder "images/" relatif terhadap file HTML ini.
+    // Ganti nama file sesuai koleksi Anda.
+    const images = [
+      "images/page1.jpg",
+      "images/page2.jpg",
+      "images/page3.jpg",
+      "images/page4.jpg"
+    ];
+
+    // === Inisialisasi variabel ===
+    let index = 0;
+    const mainImage = document.getElementById("mainImage");
+    const thumbs = document.getElementById("thumbs");
+    const imageWrap = document.getElementById("imageWrap");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const pageMeta = document.getElementById("pageMeta");
+
+    // Build thumbnails
+    function buildThumbs(){
+      thumbs.innerHTML = "";
+      images.forEach((src, i) => {
+        const t = document.createElement("img");
+        t.src = src;
+        t.alt = `Halaman ${i+1}`;
+        t.dataset.index = i;
+        t.loading = "lazy";
+        if(i === index) t.classList.add("active");
+        t.addEventListener("click", () => goTo(i));
+        t.addEventListener("keydown", (e) => {
+          if(e.key === "Enter" || e.key === " ") goTo(i);
+        });
+        thumbs.appendChild(t);
+      });
+    }
+
+    // Show image by index
+    function show(){
+      if(images.length === 0){
+        mainImage.src = "";
+        mainImage.alt = "Tidak ada gambar";
+        pageMeta.textContent = "Tidak ada gambar";
+        return;
+      }
+      mainImage.src = images[index];
+      mainImage.alt = `Halaman ${index + 1}`;
+      pageMeta.textContent = `Halaman ${index + 1} / ${images.length}`;
+      // update active thumb
+      document.querySelectorAll(".thumbnails img").forEach(img => {
+        img.classList.toggle("active", Number(img.dataset.index) === index);
+      });
+      // reset scroll/zoom state
+      imageWrap.classList.remove("zoomed");
+      imageWrap.scrollLeft = 0;
+      imageWrap.scrollTop = 0;
+    }
+
+    // Navigation with wrap-around
+    function goTo(i){
+      if(images.length === 0) return;
+      if(i < 0) i = images.length - 1;
+      if(i >= images.length) i = 0;
+      index = i;
+      show();
+      // ensure active thumbnail visible
+      const activeThumb = document.querySelector('.thumbnails img.active');
+      if(activeThumb) activeThumb.scrollIntoView({behavior:"smooth", inline:"center"});
+    }
+
+    // Prev/Next buttons
+    prevBtn.addEventListener("click", () => goTo(index - 1));
+    nextBtn.addEventListener("click", () => goTo(index + 1));
+
+    // Click to toggle zoom (ignore clicks on nav)
+    imageWrap.addEventListener("click", (e) => {
+      if(e.target.closest(".nav")) return;
+      // If image not loaded yet, ignore
+      if(!mainImage.src) return;
+      imageWrap.classList.toggle("zoomed");
+    });
+
+    // Drag to pan when zoomed
+    let isDragging = false;
+    let startX, startY;
+    imageWrap.addEventListener("mousedown", (e) => {
+      if(!imageWrap.classList.contains("zoomed")) return;
+      isDragging = true;
+      startX = e.pageX - imageWrap.offsetLeft;
+      startY = e.pageY - imageWrap.offsetTop;
+      imageWrap.style.cursor = "grabbing";
+    });
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      imageWrap.style.cursor = "";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if(!isDragging) return;
+      e.preventDefault();
+      const x = e.pageX - imageWrap.offsetLeft;
+      const y = e.pageY - imageWrap.offsetTop;
+      const walkX = (x - startX) * -1;
+      const walkY = (y - startY) * -1;
+      imageWrap.scrollLeft += walkX;
+      imageWrap.scrollTop += walkY;
+      startX = x;
+      startY = y;
+    });
+
+    // Touch support: double-tap to zoom, drag to pan
+    let lastTap = 0;
+    imageWrap.addEventListener("touchend", (e) => {
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTap;
+      if (tapLength < 300 && tapLength > 0) {
+        // double tap
+        imageWrap.classList.toggle("zoomed");
+      }
+      lastTap = currentTime;
+    }, false);
+
+    // Keyboard navigation
+    window.addEventListener("keydown", (e) => {
+      if(e.key === "ArrowRight") goTo(index + 1);
+      if(e.key === "ArrowLeft") goTo(index - 1);
+      if(e.key === "Escape" && imageWrap.classList.contains("zoomed")) imageWrap.classList.remove("zoomed");
+      // space to toggle zoom when focus on imageWrap
+      if((e.key === " " || e.key === "Spacebar") && document.activeElement === imageWrap){
+        e.preventDefault();
+        imageWrap.classList.toggle("zoomed");
+      }
+    });
+
+    // Preload images (light)
+    function preloadAll(){
+      images.forEach(src => {
+        const i = new Image();
+        i.src = src;
+      });
+    }
+
+    // Inisialisasi
+    buildThumbs();
+    show();
+    preloadAll();
+
+    // Jika ingin menambahkan gambar via URL runtime, contoh:
+    // images.push("images/page5.jpg"); buildThumbs(); show();
+  </script>
+</body>
+</html>
